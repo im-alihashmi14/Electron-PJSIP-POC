@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>PJSIP Electron Demo</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      background-color: #f4f4f4;
+    }
+    
+    .container {
+      max-width: 600px;
+      margin: 50px auto;
+      padding: 20px;
+      background-color: white;
+      border-radius: 5px;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    }
+    
+    h1 {
+      text-align: center;
+      color: #333;
+    }
+    
+    .form-group {
+      margin-bottom: 15px;
+    }
+    
+    label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: bold;
+    }
+    
+    input, select {
+      width: 100%;
+      padding: 8px;
+      box-sizing: border-box;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+    }
+    
+    button {
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      padding: 10px 15px;
+      cursor: pointer;
+      border-radius: 4px;
+      font-size: 16px;
+    }
+    
+    button:hover {
+      background-color: #45a049;
+    }
+    
+    button.hangup {
+      background-color: #f44336;
+    }
+    
+    button.hangup:hover {
+      background-color: #d32f2f;
+    }
+    
+    .transport-btn {
+      background-color: #2196F3;
+      margin-right: 8px;
+      margin-top: 8px;
+    }
+    
+    .transport-btn:hover {
+      background-color: #0b7dda;
+    }
+    
+    #transport-alternatives {
+      background-color: #fff3cd;
+      border: 1px solid #ffeeba;
+      border-radius: 4px;
+      padding: 10px;
+      margin-top: 15px;
+    }
+    
+    #transport-alternatives p {
+      margin-top: 0;
+      font-weight: bold;
+      color: #856404;
+    }
+    
+    #status {
+      margin-top: 20px;
+      padding: 10px;
+      background-color: #f8f8f8;
+      border-left: 4px solid #4CAF50;
+    }
+    
+    #network-diagnostic {
+      font-family: monospace;
+      font-size: 14px;
+      line-height: 1.4;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>PJSIP Electron Demo</h1>
+    
+    <div class="form-group">
+      <label for="sipUri">SIP URI (e.g., sip:alihashmi14@sip.antisip.com)</label>
+      <input type="text" id="sipUri" placeholder="sip:username@domain.com">
+    </div>
+    
+    <div class="form-group">
+      <label for="username">Username (alihashmi14)</label>
+      <input type="text" id="username" placeholder="Username">
+    </div>
+    
+    <div class="form-group">
+      <label for="password">Password (AdvC8ptqSwPbkuA)</label>
+      <input type="password" id="password" placeholder="Password">
+    </div>
+    
+    <div class="form-group">
+      <label for="transport">Transport Protocol</label>
+      <select id="transport">
+        <option value="udp" selected>UDP (Default)</option>
+        <option value="tcp">TCP</option>
+        <option value="tls">TLS</option>
+      </select>
+    </div>
+    
+    <button id="registerBtn">Register Account</button>
+    <div id="transport-alternatives" style="display: none; margin-top: 10px;">
+      <p>Having trouble connecting? Try alternative transport protocols:</p>
+      <div id="alternative-buttons"></div>
+    </div>
+    
+    <div class="form-group" style="margin-top: 20px;">
+      <label for="destination">Call Destination (e.g., sip:im.alihashmi14@sip.linphone.org)</label>
+      <input type="text" id="destination" placeholder="sip:contact@domain.com">
+    </div>
+    
+    <button id="callBtn">Make Call</button>
+    <button id="hangupBtn" class="hangup">Hang Up</button>
+
+    <div id="callControlPanel" style="display: none;">
+      <h2>Active Call</h2>
+      <div class="form-group">
+        <label>Calling:</label>
+        <span id="currentCaller"></span>
+      </div>
+      <div class="form-group">
+        <button id="muteBtn">Mute (Local)</button>
+        <button id="unmuteBtn" style="display: none;">Unmute (Local)</button>
+        <button id="holdBtn">Hold (SIP)</button>
+        <button id="unholdBtn" style="display: none;">Unhold (SIP)</button>
+        <button id="hangupCallBtn" class="hangup">End Call</button>
+      </div>
+    </div>
+    
+    <div id="status">Status: PJSIP initializing...</div>
+  </div>
+  
+  <script>
+    // This script will communicate with the main process
+    const { ipcRenderer } = require('electron');
+    
+    let currentAccountId = null;
+    let currentCallId = null;
+
+    // Get references to the new UI elements
+    const callControlPanel = document.getElementById('callControlPanel');
+    const currentCallerSpan = document.getElementById('currentCaller');
+    const muteBtn = document.getElementById('muteBtn');
+    const unmuteBtn = document.getElementById('unmuteBtn');
+    const hangupCallBtn = document.getElementById('hangupCallBtn');
+    
+    // Update status display
+    function updateStatus(message) {
+      document.getElementById('status').textContent = 'Status: ' + message;
+    }
+    
+    // Register account button
+    document.getElementById('registerBtn').addEventListener('click', () => {
+      const sipUri = document.getElementById('sipUri').value;
+      const username = document.getElementById('username').value;
+      const password = document.getElementById('password').value;
+      const transport = document.getElementById('transport').value;
+      
+      if (!sipUri || !username || !password) {
+        updateStatus('Please fill in all fields');
+        return;
+      }
+      
+      // Hide any previous transport alternatives
+      document.getElementById('transport-alternatives').style.display = 'none';
+      document.getElementById('alternative-buttons').innerHTML = '';
+      
+      // Remove any previous diagnostic display
+      const existingDiagnostic = document.getElementById('network-diagnostic');
+      if (existingDiagnostic) {
+        existingDiagnostic.remove();
+      }
+      
+      updateStatus(`Attempting to register with ${transport.toUpperCase()} transport...`);
+      ipcRenderer.send('pjsip-register', { sipUri, username, password, transport });
+    });
+    
+    // Function to create transport alternative buttons
+    function createTransportAlternativeButtons(alternatives) {
+      const container = document.getElementById('alternative-buttons');
+      container.innerHTML = ''; // Clear existing buttons
+      
+      alternatives.forEach(transport => {
+        const button = document.createElement('button');
+        button.textContent = transport.toUpperCase();
+        button.className = 'transport-btn';
+        button.style.marginRight = '10px';
+        button.style.padding = '5px 10px';
+        
+        button.addEventListener('click', () => {
+          const sipUri = document.getElementById('sipUri').value;
+          const username = document.getElementById('username').value;
+          const password = document.getElementById('password').value;
+          
+          updateStatus(`Trying with ${transport.toUpperCase()} transport...`);
+          ipcRenderer.send('pjsip-change-transport', { sipUri, username, password, transport });
+        });
+        
+        container.appendChild(button);
+      });
+      
+      document.getElementById('transport-alternatives').style.display = 'block';
+    }
+    
+    // Make call button
+    document.getElementById('callBtn').addEventListener('click', () => {
+      const destination = document.getElementById('destination').value;
+      
+      if (currentAccountId===null) {
+        updateStatus('Please register an account first');
+        return;
+      }
+      
+      if (!destination) {
+        updateStatus('Please enter a destination');
+        return;
+      }
+      
+      ipcRenderer.send('pjsip-make-call', { accountId: currentAccountId, destination });
+    });
+    
+    // Hang up button
+    document.getElementById('hangupBtn').addEventListener('click', () => {
+      ipcRenderer.send('pjsip-hangup-all');
+    });
+    
+    // Listen for status updates from the main process
+    ipcRenderer.on('pjsip-status', (event, message) => {
+      updateStatus(message);
+    });
+
+    ipcRenderer.on('pjsip-registration-success', (event, accountId) => {
+      currentAccountId = accountId;
+      updateStatus(`Account registered successfully with ID: ${currentAccountId}`);
+      
+      // Hide transport alternatives if registration was successful
+      document.getElementById('transport-alternatives').style.display = 'none';
+    });
+    
+    // Listen for transport alternatives suggestions
+    ipcRenderer.on('pjsip-transport-alternatives', (event, alternatives) => {
+      createTransportAlternativeButtons(alternatives);
+    });
+
+    ipcRenderer.on('pjsip-registration-failed', (event, errorMsg) => {
+      updateStatus(`Registration failed: ${errorMsg}`);
+    });
+    
+    // Handle network diagnostic information
+    ipcRenderer.on('pjsip-network-diagnostic', (event, diagnosticResults) => {
+      let message = 'Network diagnostic results:\n';
+      
+      if (diagnosticResults.tests.dns) {
+        const dnsTest = diagnosticResults.tests.dns;
+        message += `\n• DNS resolution: ${dnsTest.success ? 'Success' : 'Failed'}`;
+        if (!dnsTest.success && dnsTest.recommendation) {
+          message += `\n  - ${dnsTest.recommendation}`;
+        }
+      }
+      
+      if (diagnosticResults.tests.tcp) {
+        const tcpTest = diagnosticResults.tests.tcp;
+        message += `\n• TCP connection: ${tcpTest.success ? 'Success' : 'Failed'}`;
+        if (!tcpTest.success && tcpTest.recommendation) {
+          message += `\n  - ${tcpTest.recommendation}`;
+        }
+      }
+      
+      if (diagnosticResults.recommendations && diagnosticResults.recommendations.length > 0) {
+        message += '\n\nRecommendations:';
+        diagnosticResults.recommendations.forEach(rec => {
+          message += `\n• ${rec}`;
+        });
+      }
+      
+      // Create a more detailed diagnostic popup or display in a dedicated area
+      const detailedStatus = document.createElement('pre');
+      detailedStatus.textContent = message;
+      detailedStatus.style.whiteSpace = 'pre-wrap';
+      detailedStatus.style.backgroundColor = '#f8f8f8';
+      detailedStatus.style.border = '1px solid #ddd';
+      detailedStatus.style.borderRadius = '4px';
+      detailedStatus.style.padding = '10px';
+      detailedStatus.style.marginTop = '10px';
+      detailedStatus.style.maxHeight = '200px';
+      detailedStatus.style.overflow = 'auto';
+      
+      // Remove any existing diagnostic display
+      const existingDiagnostic = document.getElementById('network-diagnostic');
+      if (existingDiagnostic) {
+        existingDiagnostic.remove();
+      }
+      
+      // Add ID for future reference
+      detailedStatus.id = 'network-diagnostic';
+      
+      // Add to the page
+      document.querySelector('.container').appendChild(detailedStatus);
+      
+      // Also update the main status
+      updateStatus('Registration failed: Network connectivity issues detected. See details below.');
+    });
+
+    ipcRenderer.on('pjsip-call-initiated', (event, callId) => {
+      currentCallId = callId;
+      updateStatus(`Call initiated with ID: ${currentCallId}`);
+      const destination = document.getElementById('destination').value;
+      currentCallerSpan.textContent = destination;
+      callControlPanel.style.display = 'block';
+      // document.getElementById('callBtn').style.display = 'none'; // Hide make call button
+      // document.getElementById('hangupBtn').style.display = 'none'; // Hide hangup all button
+    });
+
+    ipcRenderer.on('pjsip-call-failed', (event, errorMsg) => {
+      updateStatus(`Call failed: ${errorMsg}`);
+    });
+
+    ipcRenderer.on('pjsip-hangup-success', (event) => {
+      currentCallId = null;
+      updateStatus('All calls have been hung up');
+      currentCallerSpan.textContent = '';
+      callControlPanel.style.display = 'none';
+      document.getElementById('callBtn').style.display = 'inline-block'; // Show make call button
+      document.getElementById('hangupBtn').style.display = 'inline-block'; // Show hangup all button
+    });
+
+    ipcRenderer.on('pjsip-hangup-failed', (event, errorMsg) => {
+      updateStatus(`Hangup failed: ${errorMsg}`);
+    });
+
+    // Mute button handler (local mute)
+    muteBtn.addEventListener('click', () => {
+      if (currentCallId !== null) {
+        ipcRenderer.send('pjsip-local-mute', currentCallId);
+      }
+    });
+
+    ipcRenderer.on('pjsip-local-mute-success', () => {
+      updateStatus('Call locally muted (mic off to remote).');
+      muteBtn.style.display = 'none';
+      unmuteBtn.style.display = 'inline-block';
+    });
+
+    ipcRenderer.on('pjsip-local-mute-failed', (event, errorMessage) => {
+      updateStatus(`Local mute failed: ${errorMessage}`);
+    });
+
+    // Unmute button handler (local unmute)
+    unmuteBtn.addEventListener('click', () => {
+      if (currentCallId !== null) {
+        ipcRenderer.send('pjsip-local-unmute', currentCallId);
+      }
+    });
+
+    ipcRenderer.on('pjsip-local-unmute-success', () => {
+      updateStatus('Call locally unmuted (mic on to remote).');
+      unmuteBtn.style.display = 'none';
+      muteBtn.style.display = 'inline-block';
+    });
+
+    ipcRenderer.on('pjsip-local-unmute-failed', (event, errorMessage) => {
+      updateStatus(`Local unmute failed: ${errorMessage}`);
+    });
+
+    // Hold button handler (SIP hold)
+    const holdBtn = document.getElementById('holdBtn');
+    const unholdBtn = document.getElementById('unholdBtn');
+    holdBtn.addEventListener('click', () => {
+      if (currentCallId !== null) {
+        ipcRenderer.send('pjsip-hold', currentCallId);
+      }
+    });
+    ipcRenderer.on('pjsip-hold-success', () => {
+      updateStatus('Call put on hold (SIP hold sent).');
+      holdBtn.style.display = 'none';
+      unholdBtn.style.display = 'inline-block';
+    });
+    ipcRenderer.on('pjsip-hold-failed', (event, errorMessage) => {
+      updateStatus(`Hold (SIP) failed: ${errorMessage}`);
+    });
+    // Unhold button handler (SIP unhold)
+    unholdBtn.addEventListener('click', () => {
+      if (currentCallId !== null) {
+        ipcRenderer.send('pjsip-unhold', currentCallId);
+      }
+    });
+    ipcRenderer.on('pjsip-unhold-success', () => {
+      updateStatus('Call taken off hold (SIP unhold sent).');
+      unholdBtn.style.display = 'none';
+      holdBtn.style.display = 'inline-block';
+    });
+    ipcRenderer.on('pjsip-unhold-failed', (event, errorMessage) => {
+      updateStatus(`Unhold (SIP) failed: ${errorMessage}`);
+    });
+
+    // Hangup specific call button handler
+    hangupCallBtn.addEventListener('click', () => {
+      if (currentCallId !== null) {
+        ipcRenderer.send('pjsip-hangup-call', currentCallId);
+      }
+    });
+
+    ipcRenderer.on('pjsip-hangup-call-success', () => {
+      updateStatus('Call ended.');
+      currentCallId = null;
+      currentCallerSpan.textContent = '';
+      callControlPanel.style.display = 'none';
+      document.getElementById('callBtn').style.display = 'inline-block'; // Show make call button
+      document.getElementById('hangupBtn').style.display = 'inline-block'; // Show hangup all button
+      muteBtn.style.display = 'inline-block'; // Reset mute button state
+      unmuteBtn.style.display = 'none';
+    });
+
+    ipcRenderer.on('pjsip-hangup-call-failed', (event, errorMessage) => {
+      updateStatus(`End call failed: ${errorMessage}`);
+    });
+
+    // Listen for detailed call state updates from the main process
+    ipcRenderer.on('pjsip-call-state-update', (event, callState) => {
+      if (!callState || !callState.type) {
+        updateStatus('Received a call state update with no type.');
+        return;
+      }
+
+      switch (callState.type) {
+        case 'call_state_connected':
+          updateStatus(`Call connected with ${callState.remoteUri}`);
+          currentCallId = callState.callId;
+          currentCallerSpan.textContent = callState.remoteUri;
+          callControlPanel.style.display = 'block';
+          document.getElementById('callBtn').style.display = 'none'; // Hide make call button
+          document.getElementById('hangupBtn').style.display = 'none'; // Hide hangup all button
+          muteBtn.style.display = 'inline-block'; // Ensure mute button is visible
+          unmuteBtn.style.display = 'none'; // Ensure unmute button is hidden
+          break;
+        case 'call_state_disconnected':
+          updateStatus(`Call disconnected. Reason: ${callState.reason}`);
+          currentCallId = null;
+          currentCallerSpan.textContent = '';
+          callControlPanel.style.display = 'none';
+          document.getElementById('callBtn').style.display = 'inline-block'; // Show make call button
+          document.getElementById('hangupBtn').style.display = 'inline-block'; // Show hangup all button
+          muteBtn.style.display = 'inline-block'; // Reset mute button state
+          unmuteBtn.style.display = 'none';
+          break;
+        default:
+          // Fallback for other states or if message is preferred
+          if (callState.message) {
+            updateStatus(`Call ${callState.callId || ''}: ${callState.message}`);
+          } else {
+            updateStatus(`Call state: ${callState.type} for call ${callState.callId || ''}`);
+          }
+          break;
+      }
+    });
+
+    // Request initial status
+    ipcRenderer.send('pjsip-get-initial-status');
+  </script>
+</body>
+</html>

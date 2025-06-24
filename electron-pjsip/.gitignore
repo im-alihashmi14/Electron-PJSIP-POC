@@ -1,0 +1,30 @@
+# Dependency directories
+node_modules/
+
+# Build output
+build/
+
+# Electron build
+dist/
+out/
+
+# Native addon build files
+build/
+*.node
+
+# macOS specific files
+.DS_Store
+
+# Editor directories and files
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# npm debug logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*

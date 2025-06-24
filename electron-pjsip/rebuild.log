@@ -1,0 +1,23 @@
+- Searching dependency tree
+(node:42887) [DEP0060] DeprecationWarning: The `util._extend` API is deprecated. Please use Object.assign() instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+  CC(target) Release/obj.target/nothing/node_modules/node-addon-api/nothing.o
+  LIBTOOL-STATIC Release/nothing.a
+warning: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/libtool: archive library: Release/nothing.a the table of contents is empty (no object file members in the library define global symbols)
+  CXX(target) Release/obj.target/pjsip/src/pjsip_binding.o
+In file included from ../src/pjsip_binding.cc:2:
+In file included from ../../pjproject-2.15.1/pjsip/include/pjsua-lib/pjsua.h:29:
+In file included from ../../pjproject-2.15.1/pjsip/include/pjsip.h:23:
+In file included from ../../pjproject-2.15.1/pjsip/include/pjsip/sip_types.h:33:
+In file included from ../../pjproject-2.15.1/pjsip/include/pjsip/sip_config.h:26:
+In file included from ../../pjproject-2.15.1/pjlib/include/pj/types.h:33:
+In file included from ../../pjproject-2.15.1/pjlib/include/pj/limits.h:27:
+../../pjproject-2.15.1/pjlib/include/pj/compat/limits.h:38:4: warning: "limits.h is not found or not supported. LONG_MIN and LONG_MAX "            "will be defined by the library in pj/compats/limits.h and "           "overridable in config_site.h" [-W#warnings]
+   38 | #  warning "limits.h is not found or not supported. LONG_MIN and LONG_MAX " \
+      |    ^
+../src/pjsip_binding.cc:5:13: warning: unused function 'check_error' [-Wunused-function]
+    5 | static void check_error(const char* title, pj_status_t status) {
+      |             ^~~~~~~~~~~
+2 warnings generated.
+  SOLINK_MODULE(target) Release/pjsip.node
+✔ Rebuild Complete
