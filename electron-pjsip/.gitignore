@@ -1,15 +1,12 @@
 # Dependency directories
 node_modules/
 
-# Build output
-build/
 
 # Electron build
 dist/
 out/
 
 # Native addon build files
-build/
 *.node
 
 # macOS specific files
